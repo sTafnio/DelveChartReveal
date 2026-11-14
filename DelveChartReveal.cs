@@ -16,22 +16,25 @@ public class DelveChartReveal : BaseSettingsPlugin<DelveChartRevealSettings>
     public static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, uint size, out int lpNumberOfBytesWritten);
 
     /*
-        Delve cell constructor. r12 is always zero here, so the original code initializes
-        the cell's Visible qword to 0; rax holds a non-zero value at this point, so
-        swapping the source register marks every constructed cell visible. Only the three
-        opcode/register bytes change - the displacement encoded by the game is preserved,
-        so a struct layout shift does not break the patch.
+        Delve cell constructor (the one the chart rebuild calls for each of a chunk's 64
+        cells). rbp is always zero here, so the original code initializes the cell's
+        Visible qword to 0; rax still holds the cell's HasEncounter byte, so swapping the
+        source register marks every cell that has an encounter visible. Only the three
+        REX/opcode/ModRM bytes change - the displacement encoded by the game is preserved,
+        so a struct layout shift does not break the patch. A register reallocation does:
+        before the 2026-11 patch the same sequence used r14 for the cell and r12 for zero
+        (41 88 86 / 4D 89 A6 / 45 89 A6 / 49 8D 8E).
 
-            41 88 86 ? ? ? ?    mov [r14+HasEncounter], al
-            4D 89 A6 ? ? ? ?    mov [r14+Visible], r12     -> 49 89 86 (mov [r14+Visible], rax)
-            45 89 A6 ? ? ? ?    mov [r14+...], r12d
-            49 8D 8E ? ? ? ?    lea rcx, [r14+...]
+            88 86 ? ? ? ?       mov [rsi+HasEncounter], al
+            48 89 AE ? ? ? ?    mov [rsi+Visible], rbp     -> 48 89 86 (mov [rsi+Visible], rax)
+            89 AE ? ? ? ?       mov [rsi+...], ebp
+            48 8D 8E ? ? ? ?    lea rcx, [rsi+...]
     */
-    const string UnpatchedSig = "41 88 86 ? ? ? ? 4D 89 A6 ? ? ? ? 45 89 A6 ? ? ? ? 49 8D 8E";
-    const string PatchedSig = "41 88 86 ? ? ? ? 49 89 86 ? ? ? ? 45 89 A6 ? ? ? ? 49 8D 8E";
-    const int PatchOffset = 7;
-    static readonly byte[] PatchBytes = { 0x49, 0x89, 0x86 };
-    static readonly byte[] OriginalBytes = { 0x4D, 0x89, 0xA6 };
+    const string UnpatchedSig = "88 86 ? ? ? ? 48 89 AE ? ? ? ? 89 AE ? ? ? ? 48 8D 8E";
+    const string PatchedSig = "88 86 ? ? ? ? 48 89 86 ? ? ? ? 89 AE ? ? ? ? 48 8D 8E";
+    const int PatchOffset = 6;
+    static readonly byte[] PatchBytes = { 0x48, 0x89, 0x86 };
+    static readonly byte[] OriginalBytes = { 0x48, 0x89, 0xAE };
 
     IntPtr processHandle = IntPtr.Zero;
     SigScanSharp SigScan;
